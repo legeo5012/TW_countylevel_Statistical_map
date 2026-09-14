@@ -209,13 +209,13 @@
           <!-- 2. Distance represented (student self-calculates) -->
           <div class="pt-2 border-t border-slate-100">
             <label class="block text-xs font-bold text-slate-700 mb-1" for="input-scale-val">
-              此長度所代表的距離 (由學生測量計算填入)
+              此長度所代表的距離
             </label>
             <div class="flex items-center space-x-2">
               <input type="text" id="input-scale-val" value="" class="flex-1 px-3 py-1.5 text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如：100">
               <span class="text-xs font-bold text-slate-600 px-2 py-1.5 bg-slate-100 rounded-lg border border-slate-200">公里 (km)</span>
             </div>
-            <p class="text-[10px] text-slate-400 mt-1 leading-normal">提示：決定圖示長度後，請依底圖比例計算該長度對應之實際距離。</p>
+            <p class="text-[10px] text-slate-400 mt-1 leading-normal">提示：決定比例尺長度後，嘗試計算該長度所對應的實際距離，可利用google地圖的測量距離功能或查詢臺灣東西寬度。</p>
           </div>
         </div>
       </section>
@@ -265,7 +265,7 @@
           <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600">填色進度與各級行政區一覽</h3>
           <span id="colored-progress-badge" class="text-xs font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">0 / 22 縣市</span>
         </div>
-        <p class="text-xs text-slate-500 mb-3">點選筆刷後點擊地圖塗色。各分級對應縣市將自動條列於此，供學生作答學習單分析：</p>
+        <p class="text-xs text-slate-500 mb-3">點選筆刷後點擊地圖塗色，各分級對應縣市將自動條列於此。</p>
         <div id="class-summary-list" class="space-y-1.5 text-xs">
           <!-- Filled dynamically by JavaScript -->
         </div>
@@ -1550,7 +1550,7 @@
           link.download = `${cleanTitle}_${studentName}.png`;
           link.href = imageURL;
           link.click();
-          showToast('地圖已成功匯出為 PNG 圖檔！可直接列印或貼入學習單。', 'success');
+          showToast('地圖已成功匯出為 PNG 圖檔！', 'success');
         }).catch(err => {
           console.error(err);
           showToast('匯出失敗，請重試或直接使用瀏覽器列印功能', 'warning');
