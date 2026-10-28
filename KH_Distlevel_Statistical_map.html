@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>統計地圖工作室</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      touch-action: manipulation;
+    }
+    .county-path {
+      cursor: pointer;
+      vector-effect: non-scaling-stroke;
+      transition: fill 0.22s ease, stroke 0.18s ease, filter 0.2s ease;
+      stroke: #334155;
+      stroke-width: 1px;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+    }
+    .county-path:hover {
+      filter: brightness(0.88) drop-shadow(0 0 3px rgba(0,0,0,0.35));
+      stroke: #090d16;
+      stroke-width: 2.2px;
+    }
+    .county-label {
+      pointer-events: none;
+      user-select: none;
+      font-size: 11px;
+      font-weight: 700;
+      fill: #0f172a;
+      paint-order: stroke;
+      stroke: #ffffff;
+      stroke-width: 3px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .county-label-sm {
+      font-size: 9.5px;
+    }
+    .map-svg-label {
+      font-size: 5px;
+      font-weight: 700;
+      fill: #0f172a;
+      paint-order: stroke;
+      stroke: #ffffff;
+      stroke-width: 1.2px;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      pointer-events: none;
+      user-select: none;
+    }
+    .map-svg-label-sm {
+      font-size: 4px;
+    }
+    /* Office color picker style */
+    .office-palette-grid {
+      display: grid;
+      grid-template-columns: repeat(10, minmax(0, 1fr));
+      gap: 3px;
+    }
+    .office-color-box {
+      width: 19px;
+      height: 19px;
+      border: 1px solid rgba(0,0,0,0.15);
+      border-radius: 2px;
+      cursor: pointer;
+      transition: transform 0.12s ease, outline 0.12s ease;
+    }
+    .office-color-box:hover {
+      transform: scale(1.18);
+      z-index: 10;
+      outline: 2px solid #2563eb;
+      border-color: #ffffff;
+    }
+    /* Hide scrollbar */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #print-capture-area, #print-capture-area * {
+        visibility: visible;
+      }
+      #print-capture-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col antialiased selection:bg-blue-100 selection:text-blue-800">
+
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-base sm:text-lg font-black text-slate-900 leading-tight">統計地圖工作室</h1>
+          <p class="text-xs text-slate-500 hidden sm:block">臺灣</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button id="btn-toggle-labels" class="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition">
+          <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+          <span id="label-toggle-text">隱藏地名</span>
+        </button>
+        <button id="btn-reset-all" class="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          <span class="hidden sm:inline">重設填色</span>
+        </button>
+        <button id="btn-export-image" class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition active:scale-95">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+          <span>匯出成果學習單</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto w-full px-3 sm:px-6 py-4 flex-1 flex flex-col lg:flex-row gap-5">
+    
+    <!-- LEFT SIDEBAR: Controls & Settings -->
+    <aside class="w-full lg:w-[430px] flex flex-col gap-4 no-print order-2 lg:order-1">
+      
+      <!-- CARD 1: Student & Map Metadata -->
+      <section class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+          <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <span class="w-6 h-6 rounded-md bg-blue-100 text-blue-700 inline-flex items-center justify-center text-xs font-black">1</span>
+            地圖基本資訊（圖名與作者）
+          </h2>
+          <span class="text-xs text-blue-600 font-semibold">必填</span>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1" for="input-map-title">地圖名稱 (圖名) <span class="text-red-500">*</span></label>
+            <input type="text" id="input-map-title" value="" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800 transition" placeholder="例如：台灣各縣市人口密度分級圖">
+          </div>
+
+          <!-- Student info row -->
+          <div class="grid grid-cols-3 gap-2 pt-1">
+            <div>
+              <label class="block text-[11px] font-medium text-slate-500 mb-0.5" for="input-student-class">班級</label>
+              <input type="text" id="input-student-class" value="" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-400" placeholder="例如：101">
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-slate-500 mb-0.5" for="input-student-no">座號</label>
+              <input type="text" id="input-student-no" value="" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-400" placeholder="例如：01">
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-slate-500 mb-0.5" for="input-student-name">姓名</label>
+              <input type="text" id="input-student-name" value="" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-400 font-medium" placeholder="學生姓名">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCALE SETTING SLIDER CARD (REFINED) -->
+      <section class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
+          <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <span class="w-6 h-6 rounded-md bg-blue-100 text-blue-700 inline-flex items-center justify-center text-xs font-black">2</span>
+            比例尺練習設置
+          </h2>
+          <button type="button" id="btn-reset-scale" class="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-red-600 transition" title="重設比例尺長度與填寫數值">
+            <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            <span>重設比例尺</span>
+          </button>
+        </div>
+
+        <div class="space-y-3.5">
+          <!-- 1. Scale Bar visual length slider -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-bold text-slate-700">比例尺圖示長度 (圖面外觀)</span>
+              <span id="scale-width-display" class="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">116 px</span>
+            </div>
+            <input type="range" id="slider-scale-width" min="60" max="220" step="4" value="116" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+            <div class="flex justify-between text-[10px] text-slate-400 font-semibold mt-0.5">
+              <span>較短</span>
+              <span>拖曳決定長度</span>
+              <span>較長</span>
+            </div>
+          </div>
+
+          <!-- 2. Distance represented (student self-calculates) -->
+          <div class="pt-2 border-t border-slate-100">
+            <label class="block text-xs font-bold text-slate-700 mb-1" for="input-scale-val">
+              此長度所代表的距離 (由學生測量計算填入)
+            </label>
+            <div class="flex items-center space-x-2">
+              <input type="text" id="input-scale-val" value="" class="flex-1 px-3 py-1.5 text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如：100">
+              <span class="text-xs font-bold text-slate-600 px-2 py-1.5 bg-slate-100 rounded-lg border border-slate-200">公里 (km)</span>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-1 leading-normal">提示：決定圖示長度後，請依底圖比例計算該長度對應之實際距離。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 relative">
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+          <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <span class="w-6 h-6 rounded-md bg-blue-100 text-blue-700 inline-flex items-center justify-center text-xs font-black">3</span>
+            分級數目、區間與色彩
+          </h2>
+          <span class="text-xs text-slate-400">點色塊選色</span>
+        </div>
+
+        <!-- Class count selector -->
+        <div class="flex items-center justify-between mb-3.5 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
+          <span class="font-bold text-slate-700">統計分級數目：</span>
+          <div class="inline-flex rounded-lg p-0.5 bg-slate-200 border border-slate-300/80">
+            <button class="class-num-btn px-2.5 py-1 text-xs font-semibold rounded-md transition" data-classes="3">3 級</button>
+            <button class="class-num-btn px-2.5 py-1 text-xs font-semibold rounded-md transition" data-classes="4">4 級</button>
+            <button class="class-num-btn px-2.5 py-1 text-xs font-semibold rounded-md transition" data-classes="5">5 級</button>
+            <button class="class-num-btn px-2.5 py-1 text-xs font-semibold rounded-md bg-white text-blue-700 shadow-sm" data-classes="6">6 級</button>
+          </div>
+        </div>
+
+        <!-- Unit specification (moved here to associate with legend) -->
+        <div class="mb-3">
+          <label class="block text-xs font-semibold text-slate-600 mb-1" for="input-map-unit">統計指標單位說明 (顯示於圖例)</label>
+          <input type="text" id="input-map-unit" value="" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 transition" placeholder="例如：人／平方公里、公噸、戶">
+        </div>
+
+        <!-- Class Color Pickers & Range Inputs Container -->
+        <div class="space-y-2 mb-3" id="legend-editor-container">
+          <!-- Dynamically populated rows with color buttons and min ~ max inputs -->
+        </div>
+
+        <!-- Eraser Tool Button -->
+        <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+          <button id="btn-eraser-tool" class="brush-selector-btn flex items-center space-x-2 px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 hover:bg-slate-50 transition w-full justify-center">
+            <span class="w-4 h-4 rounded border border-slate-400 bg-white flex items-center justify-center text-slate-500 font-bold text-[10px]">✕</span>
+            <span>橡皮擦（清除該區填色）</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600">填色進度與各級行政區一覽</h3>
+          <span id="colored-progress-badge" class="text-xs font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">0 / 38 區</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">點選筆刷後點擊地圖塗色。各分級對應行政區將自動條列於此，供學生作答學習單分析：</p>
+        <div id="class-summary-list" class="space-y-1.5 text-xs">
+          <!-- Filled dynamically by JavaScript -->
+        </div>
+      </section>
+    </aside>
+
+    <!-- RIGHT: Map Canvas & Poster Container -->
+    <div class="flex-1 flex flex-col items-center order-1 lg:order-2">
+
+      <!-- CURRENT ACTIVE BRUSH BAR -->
+      <div class="w-full flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm mb-3 no-print">
+        <div class="flex items-center space-x-2.5">
+          <span class="text-xs font-bold text-slate-600">目前使用筆刷：</span>
+          <div class="flex items-center space-x-2 bg-slate-50 px-3 py-1 rounded-lg border border-slate-200">
+            <span id="active-brush-swatch" class="w-4 h-4 rounded-md shadow-inner inline-block" style="background-color: #5b9bd5;"></span>
+            <span id="active-brush-label" class="text-xs font-bold text-slate-800">第 1 級</span>
+          </div>
+        </div>
+        <div class="text-xs text-slate-400 hidden sm:block">提示：點擊右側各區進行填色</div>
+      </div>
+      </section>
+
+      <section class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600">填色進度與各級行政區一覽</h3>
+          <span id="colored-progress-badge" class="text-xs font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">0 / 22 縣市</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">點選筆刷後點擊地圖塗色。各分級對應縣市將自動條列於此，供學生作答學習單分析：</p>
+        <div id="class-summary-list" class="space-y-1.5 text-xs">
+          <!-- Filled dynamically by JavaScript -->
+        </div>
+      </section>
+    </aside>
+
+    <!-- RIGHT: Map Canvas & Poster Container -->
+    <div class="flex-1 flex flex-col items-center order-1 lg:order-2">
+
+      <!-- CURRENT ACTIVE BRUSH BAR -->
+      <div class="w-full flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm mb-3 no-print">
+        <div class="flex items-center space-x-2.5">
+          <span class="text-xs font-bold text-slate-600">目前使用筆刷：</span>
+          <div class="flex items-center space-x-2 bg-slate-50 px-3 py-1 rounded-lg border border-slate-200">
+            <span id="active-brush-swatch" class="w-4 h-4 rounded-md shadow-inner inline-block" style="background-color: #5b9bd5;"></span>
+            <span id="active-brush-label" class="text-xs font-bold text-slate-800">第 1 級</span>
+          </div>
+        </div>
+        <div class="text-xs text-slate-400 hidden sm:block">提示：點擊右側各縣市進行填色</div>
+      </div>
+
+      <div id="print-capture-area" class="w-full bg-white rounded-2xl border border-slate-200 p-4 sm:p-7 shadow-sm flex flex-col relative transition-all">
+        
+        <!-- MAP POSTER HEADER (Title & Student Meta) -->
+        <div class="border-b-2 border-slate-800 pb-3 mb-3 flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <h2 id="poster-map-title" class="text-lg sm:text-2xl font-black text-slate-900 tracking-tight min-h-[1.75rem]"></h2>
+          </div>
+          <!-- Student meta badge -->
+          <div class="text-right sm:border-l sm:border-slate-200 sm:pl-4">
+            <div id="poster-student-meta" class="text-xs text-slate-700 font-bold min-h-[1rem]"></div>
+            <div id="poster-date-meta" class="text-[11px] text-slate-500"></div>
+          </div>
+        </div>
+
+        <!-- MAP CONTAINER (SVG + Insets + Compass + Scale Bar) -->
+        <div class="relative w-full aspect-[4/5] sm:aspect-[1/1] max-h-[750px] flex items-center justify-center overflow-hidden bg-slate-50/60 rounded-xl border border-slate-200">
+          
+          <!-- Zoom Controls (Top Left) -->
+          <div data-html2canvas-ignore="true" class="absolute top-3 left-3 flex flex-col shadow-sm rounded-lg overflow-hidden border border-slate-300 z-10 bg-white/90 backdrop-blur-sm no-print">
+            <button id="btn-zoom-in" class="p-2 text-slate-600 hover:bg-slate-100 border-b border-slate-200 transition" title="放大">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12M6 12h12"/></svg>
+            </button>
+            <button id="btn-zoom-reset" class="p-2 text-slate-600 hover:bg-slate-100 border-b border-slate-200 transition" title="重設縮放與位置">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8m0-5v5h5"/></svg>
+            </button>
+            <button id="btn-zoom-out" class="p-2 text-slate-600 hover:bg-slate-100 transition" title="縮小">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 12h12"/></svg>
+            </button>
+          </div>
+
+          <!-- Compass Rose (North Arrow) - 'N' moved to top of arrow -->
+          <div class="absolute top-3 right-4 flex flex-col items-center pointer-events-none select-none z-10">
+            <span class="text-[12px] font-black text-slate-900 tracking-wider mb-0.5 leading-none">N</span>
+            <svg class="w-6 h-8 text-slate-800 drop-shadow-sm" viewBox="0 0 24 28" fill="currentColor">
+              <polygon points="12,1 4,24 12,18" fill="#0f172a"/>
+              <polygon points="12,1 20,24 12,18" fill="#94a3b8"/>
+            </svg>
+          </div>
+
+          <!-- Graphic Scale Bar (Left Bottom) -->
+          <div class="absolute bottom-3 left-3 bg-white/95 backdrop-blur-sm border border-slate-300 rounded-lg p-2 shadow-sm pointer-events-none z-10 flex flex-col">
+            <div class="text-[10px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+              <span>比例尺 (Scale)</span>
+              <span class="text-[9px] text-slate-500 font-normal">公里 (km)</span>
+            </div>
+            <!-- Dynamic Graphic Scale Bar (Numbers on Top of Bars) -->
+            <div class="flex items-center" id="graphic-scale-container">
+              <div class="flex flex-col items-start" id="scale-block-1" style="width: 58px;">
+                <!-- Numbers on top -->
+                <div class="flex justify-between w-full text-[9px] font-bold text-slate-800 mb-0.5">
+                  <span>0</span>
+                  <span id="scale-mid-label"></span>
+                </div>
+                <!-- Graphic bar at bottom -->
+                <div class="w-full h-2 bg-slate-900 border border-slate-700"></div>
+              </div>
+              <div class="flex flex-col items-start" id="scale-block-2" style="width: 58px;">
+                <!-- Numbers on top -->
+                <div class="flex justify-end w-full text-[9px] font-bold text-slate-800 mb-0.5">
+                  <span id="scale-end-label"></span>
+                </div>
+                <!-- Graphic bar at bottom -->
+                <div class="w-full h-2 bg-white border border-slate-700"></div>
+              </div>
+            </div>
+            <div class="text-[8.5px] text-slate-500 mt-1">投影法：二度分帶橫麥卡托 (TM2)</div>
+          </div>
+
+          <!-- MAIN CONTAINER SVG WITH ACCURATE USER DATA -->
+          <svg id="taiwan-svg" viewBox="0 0 680 800" class="w-full h-full max-h-[740px] select-none touch-none">
+            
+            <!-- Zoom wrapper for D3 -->
+            <g id="map-zoom-group">
+              <!-- TAIWAN MAIN ISLAND + PENGHU (PRECISE AI VECTOR MAP PROVIDED BY USER) -->
+              <!-- Changed ViewBox to center Kaohsiung map properly -->
+              <svg x="0" y="0" width="680" height="800" viewBox="0 0 595 841" preserveAspectRatio="xMidYMid meet">
+                
+                <path id="岡山區" data-name="岡山區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                l-2.563,1.313l-3.688-2.438l-4.313,0.25l-0.125,2.313l1.875,4l-5.938,3.563l-1.438,3.313l-4.188,1l-6-4.125l-5.625-0.688
+                l-1.438,1.625l0.375,2.438l1.5,2l-1.313,2.625l3.375,2.75l0.938,5l-3.625,3.625l-1.563,4.625l1.75,3.938l2.688,3.25L78.625,491
+                l13.125,0.25l1-5.625l13.875-8L117.667,476.625z"/>
+              <path id="左營區" data-name="左營區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M112.462,562.85l-1.891-1.765l-1.891,0.629l0.503-6.428l-2.772-0.253L103.008,551l-2.899,3.025H99.1l-0.63-2.143l-2.269,0.125
+                l-3.152-1.765l-5.797,1.011l-5.169,3.652l-2.235-0.535l5.401-3.809v-9.313L84,539.688l2.117,0.221l1.695,5.967l3.5-1.375
+                l-1.161-2.826l1.133-4.16L89.75,536l1.563,0.188l0.188-1.75l-1.475,0.176v-1.133l2.044-0.974l1.61,2.106l4.286,1.388l0.785-2.688
+                l2.25,1.625l0.117-4.104l4.383-3.583l2.813,0.938l0.188,2.25l2.575,0.774l6.073,5.119l0.039,1.981l2.813,3.5l1.663,5.658
+                l-2.601,2.967l-1.055,2.707l-2.633,1.043l-1.125,3.875l0.625,4.063L112.462,562.85z"/>
+              <path id="苓雅區" data-name="苓雅區" class="county-path" sodipodi:nodetypes="csssssssscscsssscssccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M101.201,586.458l0.361-0.739l1.875-0.531l1.063,1.656l9.875-3.5l-0.125-2.5l2.094-1.906l1.031-0.031l0.688-1.563l-2.75-2.656
+                l0.469-1.344l17.906,3.469l-1.5,2.563l0.188,3.813l-8.906,4.844l-0.219,1.219l0.96,0.967l-1.539,1.119l-0.63-2.27l-2.269-0.756
+                l-1.135,0.378l-1.009-1.637l-12.729,5.404l-3.181-1.8l1.344-3.031L101.201,586.458L101.201,586.458z"/>
+              <path id="旗津區" data-name="旗津區" class="county-path" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M85.659,589.062
+                l-0.986,2.167l2.956,1.771l20.683,28.366l0.985,3.349l6.5,4.729l0.59-1.38l-20.879-29.151v-1.774h-1.576l-0.197-2.167l-1.378-0.788
+                l0.394-1.97l-1.97,0.395l-3.546-3.743L85.659,589.062L85.659,589.062L85.659,589.062z"/>
+              <path id="鼓山區" data-name="鼓山區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M112.462,562.85l-2.016,1.514l-2.899-0.126l-1.01,0.88l-2.016-0.754l-1.513,1.763l-3.529-0.251l-4.159,4.034l2.521,4.412
+                L93.145,584.9l6.707,4.188l-0.248,0.482l-7.058-3.404l-5.925,1.138l-0.252-2.271l-2.017-1.007l0.758-2.521l-0.758-0.632
+                l-6.428-10.965l-1.008-4.16l0.504-6.178l2.428-5.2l2.235,0.535l5.169-3.652l5.797-1.011l3.152,1.765l2.269-0.125l0.63,2.143h1.008
+                l2.899-3.025l3.403,4.033l2.772,0.253l-0.503,6.428l1.891-0.629L112.462,562.85"/>
+              <path id="鹽埕區" data-name="鹽埕區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M100.188,588.531l-7.042-3.631l4.269-9.617l4.149,10.436L100.188,588.531L100.188,588.531z"/>
+              <path id="新興區" data-name="新興區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M115.313,574.688l2.75,2.656l-0.688,1.563l-1.031,0.031l-2.094,1.906l0.125,2.5l-5.719,2.031l-1.156-4.531l-1.125-0.313l0.438-1.75
+                l-1.688-3.531l1.953-0.938l3,0.719L115.313,574.688z"/>
+              <path id="前鎮區" data-name="前鎮區" class="county-path" sodipodi:nodetypes="csssssssscscsssscssccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M124.21,590.217l2.536,0.267l0.913,1.251l1.798,0.725l0.458,2.629l-2.169,2.201l-3.772,0.936l-3.594,4.27l-0.039,2.953l2.229,3.162
+                l4.31,0.387l1.422-1.227l1.503-0.01l1.186,0.971l-1.512,7.06l-3.403,1.26v1.135l-2.395,1.638l-1.386-0.25l-0.504,1.639l-3.625,2.803
+                l-3.813-5.324l1.892,2.016l2.396-2.897l-2.144,0.63l-0.378-2.396l-2.899,1.767l-5.924-8.321l4.159-2.015l-1.133-0.883l-4.791,2.017
+                l-9.202-16.514l1.009-0.251l4.665,2.271l4.916,10.586l1.387-0.502l-1.009-3.658l2.016-0.882l-0.503-0.882l-2.144,0.756l-1.763-7.073
+                l12.729-5.404l1.009,1.637l1.135-0.378l2.269,0.756l0.63,2.27L124.21,590.217L124.21,590.217L124.21,590.217L124.21,590.217z"/>
+              <path id="小港區" data-name="小港區" class="county-path" sodipodi:nodetypes="ccssssssccsccsscscsssccsccsssscccccccccccccccccccccccccccccccccccccccccccccsssssscsscsc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M118.103,624.075l2.3,2.555l4.033-3.151l1.261,1.26l-2.9,2.647l3.908,4.664l2.898-2.646l1.513,1.135l-1.638,1.512l2.269,3.151
+                l3.278-2.396l0.251,1.641l-1.89,1.889l3.402,3.152l-1.764,0.882l-3.908-3.402l-3.907,2.394h-1.513l-0.378-2.143l-4.034-4.035
+                l-0.251-1.386l-3.405-1.259l-1.512,2.897l2.396,3.531l1.386-0.126l5.798,5.04l-0.251,1.009l-2.269,1.891l1.764,2.27l2.143-2.018
+                l2.395,2.774l-0.882,2.143l2.647,2.522l2.017-1.893l10.022,8.66l18.368-17.326l4.006-5.851l-2.176-14.339l-2.17-0.366l-2.119-2.936
+                l-0.398-3.412l-9.117-8.062l-6.082,3.283l-6.279-1.176l-1.979,1.204l-2.278-0.03L131,608.713l-0.01,0.018l-1.512,7.06l-3.403,1.26
+                v1.135l-2.395,1.638l-1.386-0.25l-0.504,1.639l-3.625,2.803"/>
+              <path id="前金區" data-name="前金區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M101.563,585.719l-3.097-7.788l6.659-2.681l1.688,3.531l-0.438,1.75l1.125,0.313l1.156,4.531l-4.156,1.469l-1.063-1.656
+                L101.563,585.719L101.563,585.719z"/>
+              <path id="三民區" data-name="三民區" class="county-path" sodipodi:nodetypes="csssssssscscsssscssccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M133.688,576.813l-17.906-3.469l-0.469,1.344l-5.234,0.344l-3-0.719l-1.953,0.938l-6.659,2.681l-1.052-2.647l0.427-0.962
+                l-2.521-4.412l4.159-4.034l3.529,0.251l1.513-1.763l2.016,0.754l1.01-0.88l2.899,0.126l2.016-1.514l2.413-0.725l-0.625-4.063
+                l1.125-3.875l2.633-1.043l1.055-2.707l2.601-2.967l-0.758-2.582l3.033,1.112l1.063,3.125l2.458,0.646l-0.854,3.938l2.292,8.854
+                l4.854,5.375l2.229,3.958l-0.313,2.646L133.688,576.813z"/>
+              <path id="鳳山區" data-name="鳳山區" class="county-path" sodipodi:nodetypes="csssssssscscsssscssccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M149.676,606.948l-6.082,3.283l-6.279-1.176l-1.979,1.204l-2.278-0.03L131,608.713l-0.01,0.018l-1.186-0.971l-1.503,0.01
+                l-1.422,1.227l-4.31-0.387l-2.229-3.162l0.039-2.953l3.594-4.27l3.772-0.936l2.169-2.201l-0.458-2.629l-1.798-0.725l-0.913-1.251
+                l-2.536-0.267l-0.96-0.967l0.219-1.219l8.906-4.844l-0.188-3.813l1.5-2.563l1.979-2.27l0.313-2.646l-2.229-3.958l4.625-0.188
+                l2.5,1.875l3.688-1.063l3.438,1.563l5.438-2.313l1.125,2.688l1.625,2.188l0.438,5.438l4.25,3.563l-0.25,1.625l-4.063,1.313
+                l-1.063,3.438v5.625l-4.5,5.188l-0.031,4.031l-1.156,1.344L149.676,606.948z"/>
+              <path id="大寮區" data-name="大寮區" class="county-path" sodipodi:nodetypes="csssssssscscsssscssccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M156.188,572.688l0.438,5.438l4.25,3.563l-0.25,1.625l-4.063,1.313l-1.063,3.438v5.625l-4.5,5.188l-0.031,4.031l-1.156,1.344
+                l-0.136,2.698l9.117,8.062l0.398,3.412l2.119,2.936l2.17,0.366l2.176,14.339l-4.006,5.851l6.225-0.476L176,645.25l7.938-0.438
+                l10.938-23.375l1.188-20.563l-2.5-4.125l-3.063-2.438l-1.188-5.438L190.688,567l-10.313,3.813l-15.625,0.125L156.188,572.688z"/>
+              <path id="林園區" data-name="林園區" class="county-path" sodipodi:nodetypes="csssssssscscsssscssccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M183.938,644.813L176,645.25l-8.125-3.813l-6.225,0.476l-18.368,17.326l3.843,5.386l2.938,1.25L163.125,677l9.375,5.625l8.938,0.563
+                l2.25-7.688l-0.438-9.688l-1.5-7.188L183.938,644.813z"/>
+              <path id="楠梓區" data-name="楠梓區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M123.063,531.25l-5.914,5.081l-6.073-5.119l-2.575-0.774l-0.188-2.25l-2.813-0.938l-4.383,3.583L101,534.938l-2.25-1.625
+                l-0.785,2.688l-4.286-1.388l-1.61-2.106l0.118-3.632l-3.313-1.813l-3.313,0.75l1.188,2.063L84.938,532l0.375,2.75l-2.063,1.813
+                L84,534.5l-4.063-13.563l5.938-7.563l7.813-5.188l4.813,1.125l1.813-1.375l4.75,4.438l7.438,0.5l1.125-2.063L112.813,509l4.125-1
+                l1.75,1.688l2.813-0.438l0.25-2.938l1.5-1.438l-1.063-3.188l1.313-1.563l-0.688-4.188l1.5-0.813l6.188,6.438l0.125,13.125l-2,2.813
+                l-7.375,1.687l-1.438,1.75l1.563,3.688L124,526.25l0.375,2.25L123.063,531.25z"/>
+              <path id="仁武區" data-name="仁武區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M165.896,536.917l-2.667-0.792l-2.917,1.25l-2.542,3.646l-5.479,4.021l-2.479,4.459l-4.563,2.188l-5.771-1.313l-7.313,1.938
+                l-1.458-2.583l-3.25,0.042L125,549.126l-1.063-3.125l-3.033-1.112L120,541.813l-2.813-3.5l-0.039-1.981l5.914-5.081l1.313-2.75
+                L124,526.25l-2.625-1.625l-1.563-3.688l1.438-1.75l7.375-1.687l2.792,2.041l1.625,3.042l6.667-0.625l8.875,4.667l3.125-4.292
+                l1.042-6.667l3.5-2.291l0.375-2.375l6.542-5.625l2.667,3.667l2.083,0.166l2.083,4.292L165.896,536.917z"/>
+              <path id="鳥松區" data-name="鳥松區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M169.25,570.902l-4.5,0.035l-8.563,1.75l-1.625-2.188l-1.125-2.688L148,570.125l-3.438-1.563l-3.688,1.063l-2.5-1.875l-4.625,0.188
+                l-4.854-5.375l-2.292-8.854l0.854-3.938l3.25-0.042l1.458,2.583l7.313-1.938l5.771,1.313l4.563-2.188l2.479-4.459l5.479-4.021
+                l2.542-3.646l2.917-1.25l2.667,0.792l-1.583,5.646l2.938,2.938l3.313,11.375l-0.875,6.25L169.25,570.902z"/>
+              <path id="大樹區" data-name="大樹區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M190.688,567l-10.313,3.813l-11.125,0.09l0.438-7.777l0.875-6.25L167.25,545.5l-2.938-2.938l1.583-5.646L170,513.501l-2.083-4.292
+                l7-5.125l1.25-8.75l2.583-7.333l6.167-5.833l2.083-0.084l1.833,2.75l13.917,1.167l0.167,20.833l0.583,10.417l-3.667,19l-7.25,11.916
+                L190.688,567z"/>
+              <path id="大社區" data-name="大社區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M176.167,495.334l-1.25,8.75l-7,5.125l-2.083-0.166l-2.667-3.667l-6.542,5.625l-0.375,2.375l-3.5,2.291l-1.042,6.667l-3.125,4.292
+                l-8.875-4.667l-6.667,0.625l-1.625-3.042l-2.792-2.041l2-2.813l-0.125-13.125l1.75-0.021l0.542-2.834l2.042-2.458l4.625,2.75
+                l8.25,1.875l3.042-2.667l3.25,0.084l7-6.584l6.208,1.584l2.208-2.292l3.417,0.083l0.833,2L176.167,495.334z"/>
+              <path id="燕巢區" data-name="燕巢區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M187,482.084l-2.083,0.084l-6.167,5.833l-2.583,7.333l-2.5-2.251l-0.833-2L169.417,491l-2.208,2.292L161,491.708l-7,6.584
+                l-3.25-0.084l-3.042,2.667l-8.25-1.875l-4.625-2.75l-2.042,2.458l-0.542,2.834l-1.75,0.021l-4.427-4.605l3.739-2.254l-2.646-10.12
+                l-3.542-0.375l-2.292,2.958l-3.833-0.291l0.167-10.25L116,472.5l0.458-2.042l5.875-5.958l1.375,0.375l5.292-4.083l8.208-2.626
+                l0.792-1.75l-1.333-4.166l0.875-2.792l1.167-0.375l0.208-2.75l2.083-0.5l3.167,2.458l10.708,1.792l4.833,4.084l7,1.75l6,0.041
+                l5.25,4.834l3.833-0.084l-1.958,1.917l0.667,2.042l2.667,3.375l0.167,6.375L187,482.084z"/>
+              <path id="旗山區" data-name="旗山區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M181.792,460.708l-1.958,1.917l0.667,2.042l2.667,3.375l0.167,6.375l3.667,7.667l1.833,2.75l13.917,1.167l1.188-8.251l4.688-9.375
+                L212,446.438l1.188-2.5l3-1.688l4.813,1.063l5.125,0.063l2.563,2.625l4.75,0.813l1.938-3.188l0.063-3.313l1.125-1.563l3.813-0.625
+                l1.125-10.438l-2.813-2.438l-7.75-0.875l-2-2.188l0.375-2.375l2.313-1.313l3.188-10.375L235,398l4.5-4.25l-0.375-5.688l4.375-3.875
+                l1.063-3.25l-1.375-4.188l-1.438-1.25l1.25-2.813l-0.875-5.25l3.438-3.063l-0.375-5.688l2.875-4.188l1.188-4.313l-2.813-2.125
+                l-3.75,0.25l-4.188,1.563l-1.688,12.375l-2.438,2.75l-3,1.188l-3.438,12.313l-2.688,0.625l-2.25-1.25l-1.813-4.438l-1.813,1.875
+                l0.375,6.313L218.813,388l-5.5,8.5l-3.188,7.313l-4.063,3l-10.938,2.063l0.375,5.313l1.813,2l-1.625,5.063l1.063,10.813l3.313,3.875
+                l-11.438,12.5l-1.813,3.5l-3.5,2.563L181.792,460.708z"/>
+              <path id="田寮區" data-name="田寮區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M138.469,410.594l-2.063-0.063l0.188-3.75l2.125-1.281l0.188-0.938l6.469-7.417l5.646-3.021l-0.229-3.958l6.354-4.813l3.188,0.042
+                l2.438-1.583l5.833,1.292l3.479,3.729L173,392.75l1.875,0.375l8.5,6.25l0.125,4.5l1.75,0.375l2.125-2.875l3,7l4.75,0.5l0.375,5.313
+                l1.813,2l-1.625,5.063l1.063,10.813l3.313,3.875l-11.438,12.5l-1.813,3.5l-3.5,2.563l-1.521,6.208l-3.833,0.084l-5.25-4.834
+                l-6-0.041l-7-1.75l-4.833-4.084l-10.708-1.792L141,445.833l-2.083,0.5l-0.208,2.75l-1.167,0.375l-3.833-1.75l2.875-2.416v-3.375
+                l-2.625-3.542L137,422.583l4.042-5.625l-0.417-1.417l-1.875-1.375l2.458-2.542l-0.917-4.333l-1.688,0.479L138.469,410.594z"/>
+              <path id="阿蓮區" data-name="阿蓮區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M138.906,404.563l-0.188,0.938l-2.125,1.281l-0.188,3.75l2.063,0.063l0.135-2.823l1.688-0.479l0.917,4.333l-2.458,2.542l1.875,1.375
+                l0.417,1.417L137,422.583l-3.042,15.792l-1.021,1.75l-1.063,2.25l-4.625,0.125l-3.438-2.25h-5.875l-2.188,2l-3.25-0.313
+                l-2.563,1.313l-3.688-2.438l-4.313,0.25l8.25-11.063l-1.063-3.125l1.125-4.5l-1.25-2.688l0.125-10h-3.563l-1.688,1.063l-3.813-2.438
+                L98,402.5l-4.188-0.188L92.063,400l1.813-0.375l-0.75-5.688l23.063,4l2.313,2.25l4.25-2.688l3.938,7L138.906,404.563z"/>
+              <path id="內門區" data-name="內門區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M242.688,348.313l-4.188,1.563l-1.688,12.375l-2.438,2.75l-3,1.188l-3.438,12.313l-2.688,0.625l-2.25-1.25l-1.813-4.438
+                l-1.813,1.875l0.375,6.313L218.813,388l-5.5,8.5l-3.188,7.313l-4.063,3l-10.938,2.063l-4.75-0.5l-3-7l-2.125,2.875l-1.75-0.375
+                l-0.125-4.5l-8.5-6.25L173,392.75l-0.917-3.917l5.917-0.25L182,377l4.167-6.083l0.583-6.167l7.25-17.917l9,0.5v-8.583h4.167
+                l0.75-1.417l-1.667-3.25l2.333-3.917l9.25,0.167l1.833-2l1.083-4.667l12.333-8.583l4.333,4.833l6.25,1.333l6.75-5.333l2.833-0.333
+                l1.667,3.333L242.688,348.313z"/>
+              <path id="橋頭區" data-name="橋頭區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M85.875,513.375l7.813-5.188l4.813,1.125l1.813-1.375l4.75,4.438l7.438,0.5l1.125-2.063L112.813,509l4.125-1l1.75,1.688l2.813-0.438
+                l0.25-2.938l1.5-1.438l-1.063-3.188l1.313-1.563l-0.688-4.188l1.5-0.813l6.188,6.438l-4.427-4.605l3.739-2.254l-2.646-10.12
+                l-3.542-0.375l-2.292,2.958l-3.833-0.291l0.167-10.25l-11.042,1l-13.875,8l-1,5.625l0.083,6.834l-3.25,6.917l-1.75,0.5
+                L85.875,513.375z"/>
+              <path id="梓官區" data-name="梓官區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M79.938,520.938l5.938-7.563l0.958-7.874l1.75-0.5l3.25-6.917l-0.083-6.834L78.625,491l-4.792,6.334l-1.417,6.667L79.938,520.938z"
+                />
+              <path id="彌陀區" data-name="彌陀區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M72.417,504.001l1.417-6.667L78.625,491l4.563-8.688l-2.688-3.25l-1.75-3.938l1.563-4.625l-4.813-2.749l-3.083,1.5l-5.917-3.917
+                l-3.333-0.167l-0.25,1.417l-3.083-2.667l-5.083-1.25L72.417,504.001z"/>
+              <path id="茄萣區" data-name="茄萣區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M43.083,433.417l3.833-3.667l7.042,1.625l2.875-3.333l0.583-6.75l-1-2.958l-0.292-5.427l-2.563-3.219l-3.438,0.219l0.063-1.344
+                l1.25-2.531l-2-2.906l-2.219,1.094l-0.125,1.719l-2.5-1.563l-0.969-4.625l1.219-4.75l-1.406-3.219l-3-2.25l-4.219-6.313
+                l-4.969,5.063l-0.656,2.563l3.625,13.563l4.469,10.875L43.083,433.417z"/>
+              <path id="湖內區" data-name="湖內區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M81.042,398.833l1,1.417l-0.417,6.375l-4.125,2.458v2.875l1.25,1.625l-1.708,2.625l-4.375,2.5l-8,0.417l-3.292-2.167l-4.958,1.375
+                l-0.292-5.427l-2.563-3.219l-3.438,0.219l0.063-1.344l1.25-2.531l-2-2.906l-2.219,1.094l-0.125,1.719l-2.5-1.563l-0.969-4.625
+                l1.219-4.75l-1.406-3.219l-3-2.25l-4.219-6.313l3.281-0.344l5.688,3.5l5.063,0.875l3.75,3.125l3.625-0.5l3.5-4.125l3.25,0.188
+                l-0.438,6.75l3.688,2.688l2.75-0.125l4.25,3.25l3.688,3.563l2.063-0.688L81.042,398.833z"/>
+              <path id="杉林區" data-name="杉林區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M239.5,393.75l-0.375-5.688l4.375-3.875l1.063-3.25l-1.375-4.188l-1.438-1.25l1.25-2.813l-0.875-5.25l3.438-3.063l-0.375-5.688
+                l2.875-4.188l1.188-4.313l-2.813-2.125l-3.75,0.25l12.229-29.396l-1.667-3.333l-2.833,0.333l-6.75,5.333l-6.25-1.333l-4.333-4.833
+                L245,300.25l6.875-5.5l6.625-1.5l3.375,14.375l7.625-2.75l8.25-0.75l4.625-5l5.5,0.75l7.375,9.75l2.75,0.25l0.625,3.25l4.5,4
+                l3.125,8.75l-2.375,7.375l2.375,14.625L299,349.25l-2.5-3.875l-3.75,3.125l-0.75,3l-2.5,0.875l-3.625-1.125l-7.625,7.875L277,370.5
+                l-4.25,3.25l-7-0.5l-2.25-1.375l-1.333,2.75l-8.375,6.917l-0.542,1.792l-6.042,2.917L247,389.5L239.5,393.75z"/>
+              <path id="美濃區" data-name="美濃區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M306.25,347.875L299,349.25l-2.5-3.875l-3.75,3.125l-0.75,3l-2.5,0.875l-3.625-1.125l-7.625,7.875L277,370.5l-4.25,3.25l-7-0.5
+                l-2.25-1.375l-1.333,2.75l-8.375,6.917l-0.542,1.792l-6.042,2.917L247,389.5l-7.5,4.25L235,398l-0.188,10.125l-3.188,10.375
+                l-2.313,1.313l-0.375,2.375l2,2.188l7.75,0.875l2.813,2.438l-1.125,10.438l-3.813,0.625l-1.125,1.563l-0.063,3.313l-1.938,3.188
+                l4.063,1.438l1-1.313l8.188-1.563l5.5,2.438l11,0.125l25.25-22.125l-1.125-8.625l3.063-20.375l3.25-3.875l-0.313-6.063l4.375-0.188
+                l2.625,0.813l1.688-1.938l1.313-7l4.625-6.063l-0.125-3l-2.188-2.688l3.75-11.063L306.25,347.875z"/>
+              <path id="六龜區" data-name="六龜區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M288.438,425.813l-1.125-8.625l3.063-20.375l3.25-3.875l-0.313-6.063l4.375-0.188l2.625,0.813l1.688-1.938l1.313-7l4.625-6.063
+                l-0.125-3l-2.188-2.688l3.75-11.063l-3.125-7.875l-2.375-14.625l2.375-7.375l-3.125-8.75l-4.5-4l-0.625-3.25l8.667-6.875
+                l3.167-13.333l6.833-4.833l0.833-9.167l5.334-2.667l1-6.833l7.833-10l3.333-1.333l7.334-13.167l9.333,6.167l7.833,9.5l3.334,0.167
+                l3.5-2.167l2.833,1.333l5-2.5l7,4l-3.833,7.667l-5.667,3.5l-9.75-1.417l-3.833,3.792l2.042,13.875l7.667,9.542l-0.25,2.667
+                l-2.417,1.292l-0.5,3.417l-2.458,3.292l-6.792,2.458l-1.75,6.417l-2.709,5.542l-10.625,10.958l-2.375,1.292l4.792,2.917l6.417,0.292
+                l0.416,1.875l-3.458,3l-9.166,3.625l-1.209,2.708l-3.625,6.792l0.25,6.5l3.625,10.292l-1.25,18.458l-5.875,12.958l-6.583,9.375
+                l-0.667,5.75l-1.875-1.708l-0.458-3.583l-14.708,5.958l-8.292,0.75L288.438,425.813z"/>
+              <path id="桃源區" data-name="桃源區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M447.833,54.167l7.417-0.833L469,45.417l7.416-11.667h5l2.834-2.667l7.75-0.25l2.666,2l2.75-0.417L498.25,28l10.083-1.75l8.5-4.417
+                L522.5,25l5.666-0.5l5.417,3.667l9.917,0.667l4.583,7.583L544.916,40l-0.083,3.5l2.083,1.583l-0.333,3.167l5.083,2.333l0.834,2.667
+                l4.25,4.167l-3,3.667l1.416,7.583l-2.583,1.75l-3.417,0.083L546.25,73l-6.084,1l-0.333,2.75l3.667,2.917l-0.417,1.583l-6.25,2.5
+                l-7.167,8.5l1.5,6.083l11.25,3.417l0.5,3.833l2.917,0.667l3.833-3.417l4.417,9.417L564,119.5l3.5,10.667l-3.084,3.583l-7.75,1.667
+                l-4.5,6.5l-10.75,1.75l-5,4l-8.083,3.167h-8.75l-15.25,17.75l-3.333,1.25l-1.5,3.667l-2.667,2.167l-4.25-0.583l-4.917,2.167
+                l-5.083,9l0.25,9.75l-3.333,4.25l2.5,16.5l-4.333,0.25l-4.834,4.75l-1.667,8.667l-9.916,5.833l5.5,5.333l-0.333,11.25l1.666,2.583
+                l-1.416,3.083l2.666,5.083l-1,8.167l-7.916,14.833l-0.584,5l-3.75,4.917l1.834,4l5.25,6l-0.917,7.667l-6.083,1.583l-5.334,1.917
+                l0.167,13L449.333,334l-4,0.5l-0.5,4.833l-1.666,2.833l-3.5,0.5l-0.5,4l-1.667,2.667l-4.333,1l-1.834,4.333L428,351.5l-6.5-2.5
+                l-1.833-4.167l-4,1.833l-5.834-1.167l-5.166-3.5h-4.334l-1.666,3.833L394.5,348H390l-11.167-1l-3.666-5.667l-4.5-1.833l-2.834-4.833
+                h-2.166l-5.5,7l-6.334,1.667l-5,5.5L343,350.5l-7.291-3.625l1.209-2.708l9.166-3.625l3.458-3l-0.416-1.875l-6.417-0.292
+                l-4.792-2.917l2.375-1.292l10.625-10.958l2.709-5.542l1.75-6.417l6.792-2.458l2.458-3.292l0.5-3.417l2.417-1.292l0.25-2.667
+                l-7.667-9.542l-2.042-13.875l3.833-3.792l9.75,1.417l5.667-3.5l3.833-7.667l-7-4l-5,2.5l-2.833-1.333l-3.5,2.167l-3.334-0.167
+                l-7.833-9.5l-9.333-6.167L344,234.75l1.917-1.583l1.666-10.417L350.5,220l3.583,1.75l9.751-8.833l3,0.833l2.667-2.417l1.333-2.417
+                l3.25-1.667l7.333-9.917l0.75-7.167l6.084-8.583l0.333-1.167l-2-1.917l3.167-1.5l1.25-8.667l4.917-13.167l4.916-10.75l5.583-8.833
+                l7.5-7.75l1.084-5.917l4.333-0.25l2.333-6.583l7.25-5.583l0.584-4.333l-5.417-5.75l-0.417-4l-4.833-5.167l0.583-2.333l3.917,2.167
+                l10.25-4.167l1.083-6.417l2.5-4.25l3.584-3.333l-1.334-2.167l2.667-2.333V64.25l3.25-2.917L447.833,54.167z"/>
+              <path id="茂林區" data-name="茂林區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M431.333,354.667L428,351.5l-6.5-2.5l-1.833-4.167l-4,1.833l-5.834-1.167l-5.166-3.5h-4.334l-1.666,3.833L394.5,348H390l-11.167-1
+                l-3.666-5.667l-4.5-1.833l-2.834-4.833h-2.166l-5.5,7l-6.334,1.667l-5,5.5L343,350.5l-7.291-3.625l-3.625,6.792l0.25,6.5
+                l3.625,10.292l-1.25,18.458l-5.875,12.958l-6.583,9.375l-0.667,5.75l1.5-0.542l2.208-2.208l1.875,4.042l1.209,11.208l8.458,1.917
+                l2.458-0.917l0.667-2.5l5.792-2.083l8-9.708l13.292-1.25l6.166,4.458l5.25,1.583l5.5,4.959l2.667,1.083l2.541,4.458l0.375,4.542
+                l9.417,10.292l1.958,0.708l2.75-2.25l4.834-0.625l-0.334-8.25l3.709,0.167l7.75-3.125l2.208-3.75l2.667-0.417l2.166-2.125
+                l5.417-0.708l3.667,1.875l3.708,7.333l3.209,0.458l2.458-2.791l1.542,0.833l2.333,3.875l4.25,3.5l1.5-9.125l-3.625-2.375
+                l-1.625-0.125l-0.083-2l2.541-1.625l0.542-3.208l-5.125-4.875l-5.25,0.042l-5.167-3.542l-0.416-4l-3.167-3l0.25-3.208l-3-2.792
+                l-0.167-3.583l1.917-2.125l0.625-3.5l-3.292-3.375l-0.083-3.833l-3.417-4.333l-0.25-7.875l1.458-3.25l-0.416-4.042l-1.667-2.333
+                l0.792-2.667l4.916-2.375L431.333,354.667z"/>
+              <path id="甲仙區" data-name="甲仙區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M350.5,220l-2.917,2.75l-1.666,10.417L344,234.75l-1.666,6.917L335,254.833l-3.333,1.333l-7.833,10l-1,6.833l-5.334,2.667
+                l-0.833,9.167l-6.833,4.833L306.667,303L298,309.875l-2.75-0.25l-7.375-9.75l-5.5-0.75l-4.625,5l-8.25,0.75l-7.625,2.75
+                L258.5,293.25l-6.625,1.5l8.813-5.313L275,276.125l12.563-24.188l-0.5-4.313l5-5.125l1.375-5.125l6.375-6.313l2.5-5.5l8.438-4.438
+                l1.625-3.25l3.188-1.375l0.875-3.25l1.938-1.25l0.063-2.438l-0.813-1.125l0.375-5.313l8.25-8.5l5.25,4.938l4.25,0.875l2.25,1.313
+                l1.813-0.375l4.688,2.813l0.125,2.688l0.25,7.438l3.438,2.875L350.5,220z"/>
+              <path id="那瑪夏區" data-name="那瑪夏區" class="county-path" sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccc" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="
+                M418.834,90.25l4.833,5.167l0.417,4l5.417,5.75l-0.584,4.333l-7.25,5.583l-2.333,6.583l-4.333,0.25l-1.084,5.917l-7.5,7.75
+                l-5.583,8.833l-4.916,10.75l-4.917,13.167l-1.25,8.667l-3.167,1.5l2,1.917l-0.333,1.167l-6.084,8.583l-0.75,7.167l-7.333,9.917
+                l-3.25,1.667l-1.333,2.417l-2.667,2.417l-3-0.833l-9.751,8.833L350.5,220l-2.188-2.813l-3.438-2.875l-0.25-7.438l-0.125-2.688
+                l-4.688-2.813L338,201.75l-2.25-1.313l-4.25-0.875l-5.25-4.938l1.25-2.875l0.125-6.375l-2.375-2.5l0.75-6l-0.375-8.75l-5.125-11.25
+                l2-9l0.125-10.25l1.125-1l3.75,4.5l2.75-3.375l5,0.5l19.5,5l4.125-0.875l1.375-10l4.25-2.875l11,1.625l4.25-8.5l5.375-1.625
+                l5.75-7.75l2.125-7.5l3.5,1.5h8.75l3.5-3.5l1.375-4.875l6-2.375L418.834,90.25z"/>
+              <polygon id="永安區" data-name="永安區" class="county-path" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="74.332,446.601 
+                71.108,444.174 69.903,440.759 66.918,440.543 64.42,438.901 62.581,439.567 60.48,435.769 55.514,433.338 53.958,431.375 
+                46.917,429.75 43.083,433.417 46.708,446.333 54.75,462.667 59.833,463.917 62.917,466.584 63.167,465.167 66.5,465.334 
+                72.417,469.251 75.5,467.751 80.313,470.5 83.938,466.875 83,461.875 79.625,459.125 80.938,456.5 79.438,454.5 79.063,452.063 
+                80.5,450.438 80.169,446.138 "/>
+              <polygon id="路竹區" data-name="路竹區" class="county-path" fill="#FFFFFF" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="110.188,430 
+                109.125,426.875 110.25,422.375 109,419.688 109.125,409.688 105.563,409.688 103.875,410.75 100.063,408.313 98,402.5 
+                93.813,402.313 92.063,400 86.167,398.958 80.792,396.625 81.042,398.833 82.042,400.25 81.625,406.625 77.5,409.083 77.5,411.958 
+                78.75,413.583 77.042,416.208 72.667,418.708 64.667,419.125 61.375,416.958 56.417,418.333 57.417,421.292 56.833,428.042 
+                53.958,431.375 55.514,433.338 60.48,435.769 62.581,439.567 64.42,438.901 66.918,440.543 69.903,440.759 71.108,444.174 
+                74.332,446.601 80.169,446.138 80.5,450.438 86.125,451.125 92.125,455.25 96.313,454.25 97.75,450.938 103.688,447.375 
+                101.813,443.375 101.938,441.063 "/>
+
+              <!-- PRECISE COUNTY TEXT LABELS AT GEOGRAPHIC CENTROIDS -->
+              <g id="taiwan-county-labels">
+                <text x="99" y="467" class="county-label map-svg-label" text-anchor="middle">岡山區</text>
+                <text x="103" y="545" class="county-label map-svg-label" text-anchor="middle">左營區</text>
+                <text x="116" y="586" class="county-label map-svg-label" text-anchor="middle">苓雅區</text>
+                <text x="90" y="607" class="county-label map-svg-label" text-anchor="middle">旗津區</text>
+                <text x="90" y="565" class="county-label map-svg-label" text-anchor="middle">鼓山區</text>
+                <text x="96" y="585" class="county-label map-svg-label" text-anchor="middle" style="font-size: 5px;">鹽埕區</text>
+                <text x="113" y="579" class="county-label map-svg-label" text-anchor="middle" style="font-size: 5px;">新興區</text>
+                <text x="112" y="605" class="county-label map-svg-label" text-anchor="middle">前鎮區</text>
+                <text x="142" y="635" class="county-label map-svg-label" text-anchor="middle">小港區</text>
+                <text x="103" y="581" class="county-label map-svg-label" text-anchor="middle" style="font-size: 5px;">前金區</text>
+                <text x="122" y="570" class="county-label map-svg-label" text-anchor="middle">三民區</text>
+                <text x="142" y="594" class="county-label map-svg-label" text-anchor="middle">鳳山區</text>
+                <text x="175" y="605" class="county-label map-svg-label" text-anchor="middle">大寮區</text>
+                <text x="167" y="660" class="county-label map-svg-label" text-anchor="middle">林園區</text>
+                <text x="105" y="522" class="county-label map-svg-label" text-anchor="middle">楠梓區</text>
+                <text x="143" y="538" class="county-label map-svg-label" text-anchor="middle">仁武區</text>
+                <text x="152" y="560" class="county-label map-svg-label" text-anchor="middle">鳥松區</text>
+                <text x="182" y="525" class="county-label map-svg-label" text-anchor="middle">大樹區</text>
+                <text x="145" y="512" class="county-label map-svg-label" text-anchor="middle">大社區</text>
+                <text x="150" y="478" class="county-label map-svg-label" text-anchor="middle">燕巢區</text>
+                <text x="213" y="428" class="county-label map-svg-label" text-anchor="middle">旗山區</text>
+                <text x="160" y="427" class="county-label map-svg-label" text-anchor="middle">田寮區</text>
+                <text x="120" y="423" class="county-label map-svg-label" text-anchor="middle">阿蓮區</text>
+                <text x="210" y="365" class="county-label map-svg-label" text-anchor="middle">內門區</text>
+                <text x="107" y="496" class="county-label map-svg-label" text-anchor="middle">橋頭區</text>
+                <text x="81" y="505" class="county-label map-svg-label" text-anchor="middle">梓官區</text>
+                <text x="70" y="480" class="county-label map-svg-label" text-anchor="middle" style="font-size: 5px;">彌陀區</text>
+                <text x="48" y="420" class="county-label map-svg-label" text-anchor="middle">茄萣區</text>
+                <text x="65" y="407" class="county-label map-svg-label" text-anchor="middle">湖內區</text>
+                <text x="270" y="335" class="county-label map-svg-label" text-anchor="middle">杉林區</text>
+                <text x="270" y="405" class="county-label map-svg-label" text-anchor="middle">美濃區</text>
+                <text x="320" y="340" class="county-label map-svg-label" text-anchor="middle">六龜區</text>
+                <text x="455" y="160" class="county-label map-svg-label" text-anchor="middle">桃源區</text>
+                <text x="385" y="385" class="county-label map-svg-label" text-anchor="middle">茂林區</text>
+                <text x="300" y="265" class="county-label map-svg-label" text-anchor="middle">甲仙區</text>
+                <text x="370" y="170" class="county-label map-svg-label" text-anchor="middle">那瑪夏區</text>
+                <text x="60" y="450" class="county-label map-svg-label" text-anchor="middle">永安區</text>
+                <text x="85" y="428" class="county-label map-svg-label" text-anchor="middle">路竹區</text>
+              </g>
+            </svg>
+            </g>
+          </svg>
+
+          <!-- Interactive County Tooltip -->
+          <div id="county-tooltip" class="absolute hidden bg-slate-900/90 backdrop-blur-md text-white px-3 py-2 rounded-xl text-xs shadow-xl pointer-events-none z-30 transition-opacity">
+            <div class="font-bold text-sm" id="tooltip-title">縣市名稱</div>
+            <div class="text-slate-300 text-[11px]" id="tooltip-desc">點擊填色</div>
+          </div>
+        </div>
+
+        <!-- POSTER FOOTER (Legend & Cartographic Notes) -->
+        <div class="mt-4 pt-3 border-t-2 border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <!-- Dynamic Poster Legend -->
+          <div class="w-full">
+            <div class="flex flex-wrap items-baseline gap-2 mb-1.5">
+              <span class="text-xs font-black text-slate-800">圖例說明 (Legend)：</span>
+              <span id="poster-legend-unit" class="text-xs font-semibold text-slate-600"></span>
+            </div>
+            <div id="poster-legend-items" class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- OFFICE COLOR PICKER MODAL / POPOVER -->
+  <div id="office-picker-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs hidden p-4">
+    <div class="bg-white rounded-xl shadow-2xl border border-slate-300 w-full max-w-[290px] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div class="bg-slate-100 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
+        <span class="text-xs font-bold text-slate-800">色彩選擇器</span>
+        <button id="btn-close-picker" class="text-slate-400 hover:text-slate-700 text-sm font-bold leading-none">✕</button>
+      </div>
+
+      <div class="p-3.5 space-y-3 select-none">
+        <!-- 1. Theme Colors -->
+        <div>
+          <div class="text-[11px] font-bold text-slate-700 mb-1.5">佈景主題色彩</div>
+          <!-- Base 10 colors row -->
+          <div id="theme-base-row" class="office-palette-grid mb-1"></div>
+          <!-- 5 Tints & Shades rows -->
+          <div id="theme-shades-grid" class="office-palette-grid"></div>
+        </div>
+
+        <!-- 2. Standard Colors -->
+        <div class="pt-2 border-t border-slate-100">
+          <div class="text-[11px] font-bold text-slate-700 mb-1.5">標準色彩</div>
+          <div id="standard-colors-row" class="office-palette-grid"></div>
+        </div>
+
+        <!-- 3. Custom / Other Colors -->
+        <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+          <label class="cursor-pointer inline-flex items-center space-x-2 text-xs text-slate-700 hover:text-blue-600 font-semibold">
+            <span class="text-sm">🎨</span>
+            <span>其他色彩 (自訂)...</span>
+            <input type="color" id="native-color-picker" class="sr-only">
+          </label>
+          <span id="current-target-class-badge" class="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold">第 1 級</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <script>
+    // State Store
+    const state = {
+      mapTitle: "",
+      mapUnit: "",
+      studentClass: "",
+      studentNo: "",
+      studentName: "",
+      scaleBarWidth: 116, // graphic scale total width in pixels
+      scaleDistanceVal: "", // student-inputted distance representation
+      showLabels: true,
+      classCount: 6,
+      activeBrushIndex: 0,
+      pickingForClassIndex: null,
+      classes: [],
+      countyData: {}
+    };
+
+    // List of 38 official Kaohsiung districts
+    const ALL_COUNTIES = [
+      "楠梓區", "左營區", "鼓山區", "三民區", "苓雅區", "新興區", "前金區", "鹽埕區", 
+      "前鎮區", "旗津區", "小港區", "鳳山區", "茂林區", "甲仙區", "六龜區", "杉林區", 
+      "美濃區", "內門區", "仁武區", "田寮區", "旗山區", "梓官區", "阿蓮區", "湖內區", 
+      "岡山區", "茄萣區", "路竹區", "鳥松區", "永安區", "燕巢區", "大樹區", "大寮區", 
+      "林園區", "彌陀區", "橋頭區", "大社區", "那瑪夏區", "桃源區"
+    ];
+
+    // Name normalization mapping
+    function normalizeCountyName(name) {
+      if (!name) return "";
+      return name.trim();
+    }
+
+    // Initial default sequential blue colors for up to 6 classes
+    const INITIAL_DEFAULT_COLORS = [
+      '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#3182bd', '#08519c'
+    ];
+
+    // Helper to format the range text: "min ～ max"
+    function formatRangeText(cls, idx) {
+      const min = (cls.min || "").trim();
+      const max = (cls.max || "").trim();
+      if (!min && !max) return `第 ${idx + 1} 級`;
+      if (min && max) return `${min} ～ ${max}`;
+      if (min && !max) return `≥ ${min}`;
+      return `≤ ${max}`;
+    }
+
+    // Microsoft Office Theme Colors definition
+    const OFFICE_THEME_BASE = [
+      '#ffffff', '#000000', '#eeece1', '#1f497d', '#4f81bd', '#c0504d', '#9bbb59', '#8064a2', '#4bacc6', '#f79646'
+    ];
+
+    const OFFICE_THEME_SHADES = [
+      ['#f2f2f2', '#7f7f7f', '#ddd9c3', '#c6d9f1', '#dbe5f1', '#f2dcdb', '#ebf1dd', '#e5e0ec', '#dbeef3', '#fdeada'],
+      ['#d8d8d8', '#595959', '#c4bd97', '#8db3e2', '#b8cce4', '#e5b9b7', '#d7e3bc', '#ccc1da', '#b7dde8', '#fbd5b5'],
+      ['#bfbfbf', '#3f3f3f', '#948a54', '#548dd4', '#95b3d7', '#d99694', '#c3d69b', '#b2a2c7', '#92cddc', '#fac08f'],
+      ['#a5a5a5', '#262626', '#494529', '#17365d', '#366092', '#953734', '#76933c', '#5f497a', '#31859b', '#e36c09'],
+      ['#7f7f7f', '#0c0c0c', '#1d1b10', '#0f243e', '#244062', '#632523', '#4f6128', '#3f3151', '#205867', '#974806']
+    ];
+
+    const OFFICE_STANDARD_COLORS = [
+      '#c00000', '#ff0000', '#ffc000', '#ffff00', '#92d050', '#00b050', '#00b0f0', '#0070c0', '#002060', '#7030a0'
+    ];
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const bg = type === 'success' ? 'bg-emerald-600' : type === 'warning' ? 'bg-amber-600' : 'bg-slate-800';
+      toast.className = `${bg} text-white px-4 py-2 rounded-xl shadow-lg text-xs font-semibold transform transition-all duration-300 opacity-0 translate-y-2 flex items-center space-x-2 pointer-events-auto`;
+      toast.innerHTML = `<span>${message}</span>`;
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0', 'translate-y-2');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 280);
+      }, 2400);
+    }
+
+    function initOfficePickerDOM() {
+      const baseRow = document.getElementById('theme-base-row');
+      const shadesGrid = document.getElementById('theme-shades-grid');
+      const stdRow = document.getElementById('standard-colors-row');
+
+      baseRow.innerHTML = '';
+      shadesGrid.innerHTML = '';
+      stdRow.innerHTML = '';
+
+      OFFICE_THEME_BASE.forEach(c => {
+        const box = document.createElement('div');
+        box.className = 'office-color-box';
+        box.style.backgroundColor = c;
+        box.addEventListener('click', () => selectColorFromOffice(c));
+        baseRow.appendChild(box);
+      });
+
+      for (let r = 0; r < 5; r++) {
+        for (let col = 0; col < 10; col++) {
+          const color = OFFICE_THEME_SHADES[r][col];
+          const box = document.createElement('div');
+          box.className = 'office-color-box';
+          box.style.backgroundColor = color;
+          box.addEventListener('click', () => selectColorFromOffice(color));
+          shadesGrid.appendChild(box);
+        }
+      }
+
+      OFFICE_STANDARD_COLORS.forEach(c => {
+        const box = document.createElement('div');
+        box.className = 'office-color-box';
+        box.style.backgroundColor = c;
+        box.addEventListener('click', () => selectColorFromOffice(c));
+        stdRow.appendChild(box);
+      });
+
+      const nativePicker = document.getElementById('native-color-picker');
+      nativePicker.addEventListener('input', (e) => {
+        selectColorFromOffice(e.target.value);
+      });
+
+      document.getElementById('btn-close-picker').addEventListener('click', closeOfficePicker);
+      document.getElementById('office-picker-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'office-picker-modal') {
+          closeOfficePicker();
+        }
+      });
+    }
+
+    function openOfficePicker(classIdx) {
+      state.pickingForClassIndex = classIdx;
+      document.getElementById('current-target-class-badge').textContent = `第 ${classIdx + 1} 級`;
+      document.getElementById('office-picker-modal').classList.remove('hidden');
+    }
+
+    function closeOfficePicker() {
+      document.getElementById('office-picker-modal').classList.add('hidden');
+      state.pickingForClassIndex = null;
+    }
+
+    function selectColorFromOffice(color) {
+      if (state.pickingForClassIndex !== null && state.classes[state.pickingForClassIndex]) {
+        const idx = state.pickingForClassIndex;
+        state.classes[idx].color = color;
+        closeOfficePicker();
+        renderLegendEditor();
+        updateBrushDisplay();
+        renderPosterLegend();
+        updateMapFillings();
+        updateSummaryTable();
+        showToast(`第 ${idx + 1} 級顏色已更新`);
+      }
+    }
+
+    function setupClasses(count) {
+      state.classCount = count;
+      const newClasses = [];
+      for (let i = 0; i < count; i++) {
+        const existingColor = state.classes[i]?.color;
+        const fallbackColor = INITIAL_DEFAULT_COLORS[i] || '#3b82f6';
+        newClasses.push({
+          color: existingColor || fallbackColor,
+          min: state.classes[i]?.min || "",
+          max: state.classes[i]?.max || ""
+        });
+      }
+      state.classes = newClasses;
+
+      if (state.activeBrushIndex >= count) {
+        state.activeBrushIndex = 0;
+      }
+
+      renderLegendEditor();
+      updateBrushDisplay();
+      renderPosterLegend();
+      updateMapFillings();
+      updateSummaryTable();
+    }
+
+    function renderLegendEditor() {
+      const container = document.getElementById('legend-editor-container');
+      container.innerHTML = '';
+
+      state.classes.forEach((cls, idx) => {
+        const row = document.createElement('div');
+        const isActive = state.activeBrushIndex === idx;
+        row.className = `flex items-center space-x-2 p-2 rounded-xl border transition ${
+          isActive ? 'border-blue-500 bg-blue-50/70 ring-2 ring-blue-400/40' : 'border-slate-200 hover:bg-slate-50'
+        }`;
+
+        row.innerHTML = `
+          <!-- Brush Radio Selector -->
+          <div class="flex items-center cursor-pointer flex-shrink-0" title="選取為填色筆刷">
+            <input type="radio" name="brushSelection" ${isActive ? 'checked' : ''} class="w-4 h-4 text-blue-600 focus:ring-0 cursor-pointer">
+          </div>
+
+          <!-- Color Swatch Button -->
+          <button type="button" class="open-office-palette-btn flex items-center space-x-1.5 px-2 py-1 bg-white rounded-lg border border-slate-300 shadow-sm hover:border-slate-500 transition flex-shrink-0" title="點擊開啟 Office 色彩盤">
+            <span class="w-5 h-5 rounded border border-black/20 shadow-inner inline-block" style="background-color: ${cls.color};"></span>
+            <span class="text-[10px] text-slate-500 font-bold">選色 ▾</span>
+          </button>
+
+          <!-- Dual Min ~ Max Range Inputs -->
+          <div class="flex-1 flex items-center space-x-1">
+            <input type="text" value="${cls.min || ''}" data-index="${idx}" data-field="min"
+                   class="legend-range-input w-full px-2 py-1 text-xs text-center rounded-lg border border-slate-200 focus:border-blue-500 focus:bg-white bg-white font-medium text-slate-800 transition"
+                   placeholder="下限">
+            <span class="text-slate-400 font-bold text-xs select-none">～</span>
+            <input type="text" value="${cls.max || ''}" data-index="${idx}" data-field="max"
+                   class="legend-range-input w-full px-2 py-1 text-xs text-center rounded-lg border border-slate-200 focus:border-blue-500 focus:bg-white bg-white font-medium text-slate-800 transition"
+                   placeholder="上限">
+          </div>
+
+          <!-- Select Brush Tag -->
+          <button type="button" class="set-brush-btn text-[11px] font-bold px-2 py-1 rounded-md ${isActive ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'} transition flex-shrink-0">
+            ${isActive ? '使用中' : '選取'}
+          </button>
+        `;
+
+        row.addEventListener('click', (e) => {
+          if (!e.target.closest('.open-office-palette-btn') && !e.target.classList.contains('legend-range-input')) {
+            setActiveBrush(idx);
+          }
+        });
+
+        row.querySelector('.open-office-palette-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          openOfficePicker(idx);
+        });
+
+        const rangeInputs = row.querySelectorAll('.legend-range-input');
+        rangeInputs.forEach(input => {
+          input.addEventListener('input', (e) => {
+            const field = e.target.dataset.field;
+            state.classes[idx][field] = e.target.value;
+            updateBrushDisplay();
+            renderPosterLegend();
+            updateSummaryTable();
+          });
+        });
+
+        container.appendChild(row);
+      });
+    }
+
+    function setActiveBrush(index) {
+      state.activeBrushIndex = index;
+      renderLegendEditor();
+      updateBrushDisplay();
+      
+      const eraserBtn = document.getElementById('btn-eraser-tool');
+      if (index === -1) {
+        eraserBtn.classList.add('bg-red-100', 'border-red-400', 'text-red-700', 'font-bold');
+        showToast('已切換為：橡皮擦（清除填色）');
+      } else {
+        eraserBtn.classList.remove('bg-red-100', 'border-red-400', 'text-red-700', 'font-bold');
+        const text = formatRangeText(state.classes[index], index);
+        showToast(`已切換為筆刷：${text}`);
+      }
+    }
+
+    function updateBrushDisplay() {
+      const swatch = document.getElementById('active-brush-swatch');
+      const label = document.getElementById('active-brush-label');
+      
+      if (state.activeBrushIndex === -1) {
+        swatch.style.backgroundColor = '#ffffff';
+        swatch.style.border = '1px solid #94a3b8';
+        label.textContent = '橡皮擦（點擊清除行政區填色）';
+      } else {
+        const cls = state.classes[state.activeBrushIndex];
+        if (cls) {
+          swatch.style.backgroundColor = cls.color;
+          swatch.style.border = 'none';
+          const rangeStr = formatRangeText(cls, state.activeBrushIndex);
+          label.textContent = `第 ${state.activeBrushIndex + 1} 級 (${rangeStr})`;
+        }
+      }
+    }
+
+    function renderPosterLegend() {
+      const legendContainer = document.getElementById('poster-legend-items');
+      const unitContainer = document.getElementById('poster-legend-unit');
+      legendContainer.innerHTML = '';
+
+      // Update unit display
+      if (state.mapUnit && state.mapUnit.trim()) {
+        unitContainer.textContent = `[ 單位：${state.mapUnit.trim()} ]`;
+      } else {
+        unitContainer.textContent = '';
+      }
+
+      state.classes.forEach((cls, idx) => {
+        const item = document.createElement('div');
+        item.className = 'flex items-center space-x-1.5';
+        const labelText = formatRangeText(cls, idx);
+        item.innerHTML = `
+          <span class="w-4 h-4 rounded border border-slate-700 shadow-sm flex-shrink-0" style="background-color: ${cls.color};"></span>
+          <span class="text-xs text-slate-800 font-medium">${labelText}</span>
+        `;
+        legendContainer.appendChild(item);
+      });
+
+      const uncoloredItem = document.createElement('div');
+      uncoloredItem.className = 'flex items-center space-x-1.5 opacity-70';
+      uncoloredItem.innerHTML = `
+        <span class="w-4 h-4 rounded border border-slate-400 bg-white flex-shrink-0"></span>
+        <span class="text-xs text-slate-500">未填色／無資料</span>
+      `;
+      legendContainer.appendChild(uncoloredItem);
+    }
+
+    function updateMapFillings() {
+      ALL_COUNTIES.forEach(countyName => {
+        const aliases = [countyName];
+        if (countyName === "臺北市") aliases.push("台北市");
+        if (countyName === "臺中市") aliases.push("台中市");
+        if (countyName === "臺南市") aliases.push("台南市");
+        if (countyName === "臺東縣") aliases.push("台東縣");
+
+        const selector = aliases.map(a => `[data-name="${a}"], #${a}`).join(', ');
+        const paths = document.querySelectorAll(selector);
+        const classIdx = state.countyData[countyName];
+
+        paths.forEach(p => {
+          if (classIdx !== undefined && classIdx !== null && state.classes[classIdx]) {
+            p.setAttribute('fill', state.classes[classIdx].color);
+          } else {
+            p.setAttribute('fill', '#ffffff');
+          }
+        });
+      });
+    }
+
+    function updateSummaryTable() {
+      const summaryList = document.getElementById('class-summary-list');
+      summaryList.innerHTML = '';
+
+      let coloredCount = 0;
+      const classBuckets = Array.from({ length: state.classCount }, () => []);
+      const uncoloredList = [];
+
+      ALL_COUNTIES.forEach(c => {
+        const idx = state.countyData[c];
+        if (idx !== undefined && idx !== null && idx < state.classCount) {
+          classBuckets[idx].push(c);
+          coloredCount++;
+        } else {
+          uncoloredList.push(c);
+        }
+      });
+
+      document.getElementById('colored-progress-badge').textContent = `${coloredCount} / 38 區已填`;
+
+      state.classes.forEach((cls, idx) => {
+        const counties = classBuckets[idx] || [];
+        const item = document.createElement('div');
+        item.className = 'p-2 rounded-lg bg-slate-50 border border-slate-100 flex flex-col space-y-1';
+        const labelText = formatRangeText(cls, idx);
+        item.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1.5">
+              <span class="w-3 h-3 rounded-full border border-slate-400" style="background-color: ${cls.color}"></span>
+              <span class="font-bold text-slate-800">${labelText}</span>
+            </div>
+            <span class="font-semibold text-slate-500">${counties.length} 個行政區</span>
+          </div>
+          <div class="text-[11px] text-slate-600 pl-4">
+            ${counties.length > 0 ? counties.join('、') : '<span class="italic text-slate-400">尚無填色行政區</span>'}
+          </div>
+        `;
+        summaryList.appendChild(item);
+      });
+
+      if (uncoloredList.length > 0) {
+        const unItem = document.createElement('div');
+        unItem.className = 'p-2 rounded-lg bg-slate-100/60 border border-dashed border-slate-300 flex flex-col space-y-1 text-slate-500';
+        unItem.innerHTML = `
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-medium">尚未填色行政區 (${uncoloredList.length})</span>
+          </div>
+          <div class="text-[11px] text-slate-400 pl-1">
+            ${uncoloredList.join('、')}
+          </div>
+        `;
+        summaryList.appendChild(unItem);
+      }
+    }
+
+    function initMapInteractions() {
+      const svg = document.getElementById('taiwan-svg');
+      const tooltip = document.getElementById('county-tooltip');
+      const tooltipTitle = document.getElementById('tooltip-title');
+      const tooltipDesc = document.getElementById('tooltip-desc');
+
+      svg.addEventListener('click', (e) => {
+        const path = e.target.closest('.county-path');
+        if (!path) return;
+
+        const rawName = path.getAttribute('data-name') || path.id;
+        const countyName = normalizeCountyName(rawName);
+        if (!countyName) return;
+
+        if (state.activeBrushIndex === -1) {
+          delete state.countyData[countyName];
+          showToast(`已清除 ${countyName} 填色`);
+        } else {
+          state.countyData[countyName] = state.activeBrushIndex;
+          const currentText = formatRangeText(state.classes[state.activeBrushIndex], state.activeBrushIndex);
+          showToast(`已將 ${countyName} 設定為：${currentText}`);
+        }
+        updateMapFillings();
+        updateSummaryTable();
+      });
+
+      svg.addEventListener('mousemove', (e) => {
+        const path = e.target.closest('.county-path');
+        if (path) {
+          const rawName = path.getAttribute('data-name') || path.id;
+          const countyName = normalizeCountyName(rawName);
+          const classIdx = state.countyData[countyName];
+          let statusText = '點擊填色';
+          if (classIdx !== undefined && state.classes[classIdx]) {
+            statusText = `目前分級：${formatRangeText(state.classes[classIdx], classIdx)}`;
+          }
+          tooltipTitle.textContent = countyName;
+          tooltipDesc.textContent = statusText;
+          tooltip.classList.remove('hidden');
+
+          const containerRect = svg.parentElement.getBoundingClientRect();
+          const x = e.clientX - containerRect.left + 12;
+          const y = e.clientY - containerRect.top + 12;
+          tooltip.style.left = `${x}px`;
+          tooltip.style.top = `${y}px`;
+        } else {
+          tooltip.classList.add('hidden');
+        }
+      });
+
+      svg.addEventListener('mouseleave', () => {
+        tooltip.classList.add('hidden');
+      });
+    }
+
+    function updateScaleDisplay() {
+      const halfWidthPx = Math.max(14, Math.round(state.scaleBarWidth / 2));
+      
+      const block1 = document.getElementById('scale-block-1');
+      const block2 = document.getElementById('scale-block-2');
+      const midLabel = document.getElementById('scale-mid-label');
+      const endLabel = document.getElementById('scale-end-label');
+      const widthDisplay = document.getElementById('scale-width-display');
+
+      if (block1 && block2) {
+        block1.style.width = `${halfWidthPx}px`;
+        block2.style.width = `${halfWidthPx}px`;
+      }
+      if (widthDisplay) {
+        widthDisplay.textContent = `${state.scaleBarWidth} px`;
+      }
+
+      // Handle student inputted distance value
+      const rawVal = (state.scaleDistanceVal || "").trim();
+      if (rawVal) {
+        const num = parseFloat(rawVal);
+        if (!isNaN(num) && num > 0) {
+          const mid = Number.isInteger(num / 2) ? (num / 2) : (num / 2).toFixed(1);
+          if (midLabel) midLabel.textContent = `${mid}`;
+          if (endLabel) endLabel.textContent = `${rawVal} km`;
+        } else {
+          if (midLabel) midLabel.textContent = '';
+          if (endLabel) endLabel.textContent = `${rawVal} km`;
+        }
+      } else {
+        if (midLabel) midLabel.textContent = '';
+        if (endLabel) endLabel.textContent = '';
+      }
+    }
+
+    function initMapZoom() {
+      if (typeof d3 === 'undefined') return;
+      
+      const svgContainer = d3.select("#taiwan-svg");
+      const zoomGroup = d3.select("#map-zoom-group");
+
+      const zoom = d3.zoom()
+        .scaleExtent([1, 15]) // 允許放大到 15 倍，方便點選細小行政區
+        .on("zoom", (event) => {
+          zoomGroup.attr("transform", event.transform);
+        });
+
+      // 綁定縮放與拖曳事件到最外層 SVG
+      svgContainer.call(zoom);
+
+      // UI 按鈕控制邏輯
+      document.getElementById('btn-zoom-in').addEventListener('click', () => {
+        svgContainer.transition().duration(300).call(zoom.scaleBy, 1.5);
+      });
+      
+      document.getElementById('btn-zoom-out').addEventListener('click', () => {
+        svgContainer.transition().duration(300).call(zoom.scaleBy, 1 / 1.5);
+      });
+      
+      document.getElementById('btn-zoom-reset').addEventListener('click', () => {
+        svgContainer.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+      });
+    }
+
+    function initEvents() {
+      // Map Title
+      const titleInput = document.getElementById('input-map-title');
+      titleInput.addEventListener('input', (e) => {
+        state.mapTitle = e.target.value;
+        document.getElementById('poster-map-title').textContent = state.mapTitle;
+      });
+
+      // Scale Slider (controls graphic width)
+      const scaleWidthSlider = document.getElementById('slider-scale-width');
+      scaleWidthSlider.addEventListener('input', (e) => {
+        state.scaleBarWidth = parseInt(e.target.value, 10) || 116;
+        updateScaleDisplay();
+      });
+
+      // Scale Distance Input (student self-calculates and inputs)
+      const scaleValInput = document.getElementById('input-scale-val');
+      scaleValInput.addEventListener('input', (e) => {
+        state.scaleDistanceVal = e.target.value;
+        updateScaleDisplay();
+      });
+
+      // Reset Scale Bar Button
+      const resetScaleBtn = document.getElementById('btn-reset-scale');
+      if (resetScaleBtn) {
+        resetScaleBtn.addEventListener('click', () => {
+          state.scaleBarWidth = 116;
+          state.scaleDistanceVal = "";
+          document.getElementById('slider-scale-width').value = 116;
+          document.getElementById('input-scale-val').value = "";
+          updateScaleDisplay();
+          showToast('比例尺已重設回預設狀態');
+        });
+      }
+
+      // Unit
+      const unitInput = document.getElementById('input-map-unit');
+      unitInput.addEventListener('input', (e) => {
+        state.mapUnit = e.target.value;
+        renderPosterLegend();
+      });
+
+      // Student info synchronization
+      function updateStudentMeta() {
+        const c = document.getElementById('input-student-class').value.trim();
+        const no = document.getElementById('input-student-no').value.trim();
+        const n = document.getElementById('input-student-name').value.trim();
+        const parts = [];
+        if (c) parts.push(`班級：${c}`);
+        if (no) parts.push(`座號：${no}`);
+        if (n) parts.push(`姓名：${n}`);
+        document.getElementById('poster-student-meta').textContent = parts.join('　');
+      }
+      document.getElementById('input-student-class').addEventListener('input', updateStudentMeta);
+      document.getElementById('input-student-no').addEventListener('input', updateStudentMeta);
+      document.getElementById('input-student-name').addEventListener('input', updateStudentMeta);
+
+      // Toggle County Labels button
+      document.getElementById('btn-toggle-labels').addEventListener('click', () => {
+        state.showLabels = !state.showLabels;
+        const labels = document.querySelectorAll('.county-label');
+        labels.forEach(l => l.style.display = state.showLabels ? 'block' : 'none');
+        document.getElementById('label-toggle-text').textContent = state.showLabels ? '隱藏地名' : '顯示地名';
+      });
+
+      // Reset All button
+      document.getElementById('btn-reset-all').addEventListener('click', () => {
+        state.countyData = {};
+        updateMapFillings();
+        updateSummaryTable();
+        showToast('已清空所有行政區填色', 'warning');
+      });
+
+      // Class Count selector buttons (3, 4, 5, 6)
+      document.querySelectorAll('.class-num-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.class-num-btn').forEach(b => {
+            b.classList.remove('bg-white', 'text-blue-700', 'shadow-sm');
+          });
+          btn.classList.add('bg-white', 'text-blue-700', 'shadow-sm');
+          const count = parseInt(btn.dataset.classes, 10);
+          setupClasses(count);
+          showToast(`已切換為 ${count} 個分級`);
+        });
+      });
+
+      // Eraser Tool Button
+      document.getElementById('btn-eraser-tool').addEventListener('click', () => {
+        setActiveBrush(-1);
+      });
+
+      // Export Image via html2canvas
+      document.getElementById('btn-export-image').addEventListener('click', () => {
+        const captureArea = document.getElementById('print-capture-area');
+        showToast('正在產生高解析度圖檔，請稍候...');
+
+        html2canvas(captureArea, {
+          scale: 2.5,
+          useCORS: true,
+          backgroundColor: '#ffffff'
+        }).then(canvas => {
+          const imageURL = canvas.toDataURL('image/png');
+          const link = document.createElement('a');
+          const cleanTitle = (state.mapTitle || '統計地圖').replace(/\s+/g, '_');
+          const studentName = document.getElementById('input-student-name').value.trim() || '學習單';
+          link.download = `${cleanTitle}_${studentName}.png`;
+          link.href = imageURL;
+          link.click();
+          showToast('地圖已成功匯出為 PNG 圖檔！可直接列印或貼入學習單。', 'success');
+        }).catch(err => {
+          console.error(err);
+          showToast('匯出失敗，請重試或直接使用瀏覽器列印功能', 'warning');
+        });
+      });
+    }
+
+    // Startup
+    window.addEventListener('DOMContentLoaded', () => {
+      const now = new Date();
+      document.getElementById('poster-date-meta').textContent = `製圖日期：${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+
+      initOfficePickerDOM();
+      setupClasses(6);
+      updateScaleDisplay();
+      initMapZoom();
+      initMapInteractions();
+      initEvents();
+    });
+  </script>
+</body>
+</html>
